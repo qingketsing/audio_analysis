@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.ipynb_checkpoints/
+
+# Environments
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# VS Code
+.vscode/
+
+# Project Data (Inputs and Intermediate)
+vedios/*
+!vedios/.gitkeep
+wavs/*
+!wavs/.gitkeep
+
+# Extraction Results & Models
+features/*
+!features/.gitkeep
+wav2vec2_checkpoints/
+*.csv
+*.png
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
+Desktop.ini
