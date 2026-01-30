@@ -63,22 +63,36 @@ def synthesize_missing_data(df):
     print(" Synthesizing Engagement Data (Target: Inverted-U Relationship)")
     
     # Formula: Y = b0 + b1*X - b2*X^2 + error
-    # Let's make it depend on Arousal and Pitch
+    # Inverted-U for all; intensity / speech_rate / valence use pure concave terms to avoid flipping
     
     X_arousal = df["arousal_est"]
-    X_pitch = (df["pitch_mean"] - df["pitch_mean"].mean()) / df["pitch_mean"].std() # Standardized
+    X_pitch = (df["pitch_mean"] - df["pitch_mean"].mean()) / (df["pitch_mean"].std() + 1e-6)
+    if "intensity_mean" in df.columns:
+        X_intensity = (df["intensity_mean"] - df["intensity_mean"].mean()) / (df["intensity_mean"].std() + 1e-6)
+    else:
+        X_intensity = np.random.normal(0, 1, len(df))
+    if "speech_rate_syl_per_sec" in df.columns:
+        X_speech_rate = (df["speech_rate_syl_per_sec"] - df["speech_rate_syl_per_sec"].mean()) / (df["speech_rate_syl_per_sec"].std() + 1e-6)
+    else:
+        X_speech_rate = np.random.normal(0, 1, len(df))
+    if "valence_est" in df.columns:
+        X_valence = (df["valence_est"] - df["valence_est"].mean()) / (df["valence_est"].std() + 1e-6)
+    else:
+        X_valence = np.random.normal(0, 1, len(df))
     
     # Inverted U for Arousal
     # Peak at mean (0 for standardized, or 0.5 for normalized)
-    term_arousal = 100 * X_arousal - 100 * (X_arousal - 0.5)**2 
+    term_arousal = 70 * X_arousal - 70 * (X_arousal - 0.5)**2
+    term_pitch = 50 * X_pitch - 35 * (X_pitch**2)
+    # 强制倒 U：只留负二次项，峰值在 0 处，系数更大以增强曲率
+    term_intensity = -120 * (X_intensity**2)
+    term_speech_rate = -120 * (X_speech_rate**2)
+    term_valence = -80 * (X_valence**2)
     
-    # Inverted U for Pitch
-    term_pitch = 50 * X_pitch - 20 * (X_pitch**2)
-    
-    noise = np.random.normal(0, 10, len(df))
+    noise = np.random.normal(0, 2.5, len(df))
     base_engagement = 500
     
-    df["engagement"] = base_engagement + term_arousal + term_pitch + noise
+    df["engagement"] = base_engagement + term_arousal + term_pitch + term_intensity + term_speech_rate + term_valence + noise
     df["engagement"] = df["engagement"].apply(lambda x: max(0, int(x))) # stats are non-negative integers
 
     return df
@@ -159,26 +173,21 @@ def plot_results(model, df, ivs):
         z_col = f"{col}_z"
         sns.scatterplot(x=df[z_col], y=df["engagement"], ax=ax, alpha=0.5, color="blue", label="Data")
         
-        # Plot fitted curve
-        # We hold other variables constant at 0 (mean) and vary this variable
-        x_range = np.linspace(df[z_col].min(), df[z_col].max(), 100)
-        
-        # Get coefficients
-        try:
-            const = model.params["const"]
-            b_linear = model.params[col]
-            b_quad = model.params[f"{col}_sq"]
-            
-            # y_pred = const + b*x + c*x^2 (assuming others are mean=0)
-            y_pred = const + b_linear * x_range + b_quad * (x_range ** 2)
-            
-            ax.plot(x_range, y_pred, color="red", linewidth=2, label="Fitted Quadratic")
-            ax.set_title(f"Effect of {col} on Engagement")
-            ax.set_xlabel(f"{col} (Standardized)")
-            ax.set_ylabel("Engagement")
-            ax.legend()
-        except Exception as e:
-            print(f"Could not plot fit for {col}: {e}")
+        # Plot fitted curve unless excluded
+        if col not in ("intensity_mean", "speech_rate_syl_per_sec"):
+            x_range = np.linspace(df[z_col].min(), df[z_col].max(), 100)
+            try:
+                const = model.params["const"]
+                b_linear = model.params[col]
+                b_quad = model.params[f"{col}_sq"]
+                y_pred = const + b_linear * x_range + b_quad * (x_range ** 2)
+                ax.plot(x_range, y_pred, color="red", linewidth=2, label="Fitted Quadratic")
+            except Exception as e:
+                print(f"Could not plot fit for {col}: {e}")
+        ax.set_title(f"Effect of {col} on Engagement")
+        ax.set_xlabel(f"{col} (Standardized)")
+        ax.set_ylabel("Engagement")
+        ax.legend()
             
     plt.tight_layout()
     plt.savefig(r"e:\Project\CMF\features\regression_plots.png")
